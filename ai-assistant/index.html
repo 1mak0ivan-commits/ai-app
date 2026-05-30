@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>AI Assistant</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    /* ── Variables ──────────────────────────────────────── */
+    :root {
+      --bg:         #07090F;
+      --bg2:        #0F1320;
+      --card:       #161D2E;
+      --card2:      #1C2540;
+      --border:     rgba(255,255,255,0.07);
+      --border2:    rgba(255,255,255,0.12);
+      --accent:     #6366F1;
+      --accent2:    #818CF8;
+      --purple:     #8B5CF6;
+      --blue:       #3B82F6;
+      --text:       #EEF2FF;
+      --text2:      #A0ABCA;
+      --muted:      #4B5680;
+      --danger:     #F87171;
+      --success:    #34D399;
+      --t:          0.2s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* ── Reset ──────────────────────────────────────────── */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+      height: 100dvh;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient background glow */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 70% 50% at 15% 0%,   rgba(99,102,241,0.10) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 50% at 85% 100%, rgba(139,92,246,0.07) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ─────────────────────────────────────────── */
+    .app { position:relative; height:100dvh; display:flex; flex-direction:column; z-index:1; }
+
+    /* ── Header ─────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(7,9,15,0.80);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 20;
+    }
+
+    .header-left { display:flex; align-items:center; gap:10px; }
+
+    .logo {
+      width: 36px; height: 36px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      display: flex; align-items:center; justify-content:center;
+      font-size: 18px;
+      box-shadow: 0 0 18px rgba(99,102,241,0.45);
+      flex-shrink: 0;
+    }
+
+    .header-info { display:flex; flex-direction:column; gap:2px; }
+    .header-title { font-size:16px; font-weight:700; letter-spacing:-0.3px; }
+    .header-status {
+      font-size: 11.5px;
+      color: var(--success);
+      display: flex; align-items:center; gap:4px;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      animation: statusPulse 2.5s ease infinite;
+    }
+    @keyframes statusPulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:0.5; transform:scale(0.8); }
+    }
+
+    .model-pill {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--card);
+      border: 1px solid var(--border2);
+      padding: 7px 13px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text2);
+      cursor: pointer;
+      transition: all var(--t);
+      user-select: none;
+      white-space: nowrap;
+    }
+    .model-pill:active { background: var(--card2); border-color: var(--accent); color: var(--text); }
+    .pill-icon { font-size: 15px; }
+    .pill-chevron { font-size: 10px; color: var(--muted); margin-left: 2px; }
+
+    /* ── Chat ───────────────────────────────────────────── */
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 20px 14px 114px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .chat::-webkit-scrollbar { width: 2px; }
+    .chat::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 1px; }
+
+    /* ── Empty state ────────────────────────────────────── */
+    .empty {
+      margin: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 10px;
+      padding: 20px;
+      max-width: 320px;
+    }
+    .empty-glow {
+      width: 72px; height: 72px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      display: flex; align-items:center; justify-content:center;
+      font-size: 34px;
+      box-shadow: 0 0 40px rgba(99,102,241,0.35);
+      margin-bottom: 6px;
+    }
+    .empty-title { font-size:22px; font-weight:800; letter-spacing:-0.5px; }
+    .empty-sub { font-size:14px; color:var(--text2); line-height:1.6; }
+
+    .chips {
+      display: flex; flex-direction: column; gap: 8px;
+      width: 100%; margin-top: 6px;
+    }
+    .chip {
+      background: var(--card);
+      border: 1px solid var(--border2);
+      border-radius: 14px;
+      padding: 11px 15px;
+      font-size: 13.5px;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      transition: all var(--t);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .chip:active { background: var(--card2); border-color: var(--accent); transform: scale(0.98); }
+    .chip-icon { font-size: 17px; flex-shrink: 0; }
+
+    /* ── Messages ───────────────────────────────────────── */
+    .msg-group {
+      display: flex; flex-direction: column; gap: 3px;
+      animation: msgIn 0.22s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    @keyframes msgIn {
+      from { opacity:0; transform:translateY(12px) scale(0.97); }
+      to   { opacity:1; transform:translateY(0) scale(1); }
+    }
+    .msg-group.user { align-items: flex-end; }
+    .msg-group.ai   { align-items: flex-start; }
+
+    .bubble {
+      max-width: 85%;
+      padding: 12px 15px;
+      border-radius: 18px;
+      font-size: 15.5px;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    .bubble.user {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+      border-bottom-right-radius: 5px;
+      box-shadow: 0 4px 22px rgba(99,102,241,0.28);
+      color: #fff;
+    }
+
+    .bubble.ai {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 5px;
+      color: var(--text);
+    }
+
+    /* Thinking state */
+    .bubble.thinking {
+      display: flex; align-items:center; gap:10px;
+      padding: 14px 18px;
+    }
+    .think-icon {
+      font-size: 18px;
+      animation: spin 2s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .think-text { font-size: 14.5px; color: var(--text2); }
+
+    /* Streaming state */
+    .bubble.streaming { border-color: rgba(99,102,241,0.35); }
+    .cursor {
+      display: inline-block;
+      width: 2px; height: 17px;
+      background: var(--accent2);
+      border-radius: 1px;
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 0.75s ease infinite;
+    }
+    @keyframes blink { 0%,50% { opacity:1; } 51%,100% { opacity:0; } }
+
+    /* AI header inside bubble */
+    .ai-header {
+      display: flex; align-items:center; gap: 8px;
+      margin-bottom: 9px;
+      padding-bottom: 9px;
+      border-bottom: 1px solid var(--border);
+    }
+    .ai-avatar {
+      width: 22px; height: 22px;
+      border-radius: 7px;
+      display: flex; align-items:center; justify-content:center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .ai-model-name { font-size: 12px; font-weight: 600; color: var(--text2); }
+
+    /* Markdown content */
+    .content { font-size: 15px; line-height: 1.6; }
+    .content strong { font-weight: 700; }
+    .content em { font-style:italic; opacity:0.88; }
+    .content h1 { font-size:19px; font-weight:800; margin:10px 0 5px; }
+    .content h2 { font-size:17px; font-weight:700; margin:9px 0 4px; }
+    .content h3 { font-size:15px; font-weight:700; margin:8px 0 3px; }
+    .content p  { margin:4px 0; }
+    .content code {
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 13px;
+      background: rgba(0,0,0,0.35);
+      padding: 2px 6px;
+      border-radius: 5px;
+    }
+    .content pre {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 12px;
+      padding: 13px 14px;
+      margin: 10px 0;
+      overflow-x: auto;
+    }
+    .content pre code {
+      background: none; padding: 0; border-radius: 0;
+      font-size: 12.5px; line-height: 1.65;
+      display: block; white-space: pre;
+    }
+    .content ul, .content ol { padding-left: 19px; margin: 5px 0; }
+    .content li { margin: 3px 0; }
+
+    /* Message meta & actions */
+    .msg-meta {
+      font-size: 11px; color: var(--muted);
+      padding: 0 4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .msg-actions { display:flex; gap:6px; margin-top: 8px; flex-wrap:wrap; }
+    .act-btn {
+      display: flex; align-items:center; gap:4px;
+      background: rgba(255,255,255,0.06);
+      border: none;
+      color: var(--text2);
+      padding: 5px 11px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all var(--t);
+      font-family: inherit;
+    }
+    .act-btn:active { background: rgba(255,255,255,0.14); color: var(--text); }
+
+    /* ── Input area ─────────────────────────────────────── */
+    .input-area {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 10px 14px;
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
+      background: rgba(7,9,15,0.88);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border-top: 1px solid var(--border);
+      z-index: 20;
+    }
+
+    .input-row { display:flex; align-items:flex-end; gap:10px; }
+
+    .textarea {
+      flex: 1;
+      background: var(--card);
+      border: 1.5px solid var(--border2);
+      border-radius: 22px;
+      padding: 12px 18px;
+      color: var(--text);
+      font-size: 15.5px;
+      font-family: inherit;
+      line-height: 1.45;
+      resize: none;
+      outline: none;
+      max-height: 130px;
+      overflow-y: auto;
+      transition: border-color var(--t);
+    }
+    .textarea::placeholder { color: var(--muted); }
+    .textarea:focus { border-color: var(--accent); }
+
+    .send-btn {
+      width: 48px; height: 48px; flex-shrink: 0;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      color: #fff;
+      border: none;
+      display: flex; align-items:center; justify-content:center;
+      cursor: pointer;
+      transition: all var(--t);
+      box-shadow: 0 4px 18px rgba(99,102,241,0.42);
+    }
+    .send-btn:active { transform: scale(0.88); }
+    .send-btn:disabled { opacity: 0.38; box-shadow:none; cursor:not-allowed; }
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2.5px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+    }
+
+    /* ── Model bottom sheet ─────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.72);
+      z-index: 100;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .overlay.open { opacity:1; pointer-events:all; }
+
+    .sheet {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: var(--bg2);
+      border-radius: 24px 24px 0 0;
+      border-top: 1px solid var(--border2);
+      padding: 0 18px max(28px, env(safe-area-inset-bottom));
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(0.32,0.72,0,1);
+    }
+    .overlay.open .sheet { transform: translateY(0); }
+
+    .sheet-handle {
+      width: 38px; height: 4px;
+      background: var(--muted);
+      border-radius: 2px;
+      margin: 12px auto 20px;
+    }
+    .sheet-label {
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 14px;
+    }
+
+    .model-btn {
+      display: flex; align-items:center; gap:13px;
+      width: 100%;
+      padding: 13px 15px;
+      margin-bottom: 8px;
+      background: var(--card);
+      border: 1.5px solid transparent;
+      border-radius: 16px;
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      cursor: pointer;
+      text-align: left;
+      transition: all var(--t);
+    }
+    .model-btn:active { opacity: 0.75; }
+    .model-btn.active {
+      border-color: var(--accent);
+      background: rgba(99,102,241,0.12);
+    }
+    .model-emoji {
+      width: 42px; height: 42px;
+      border-radius: 13px;
+      display: flex; align-items:center; justify-content:center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .model-text { flex:1; }
+    .model-btn-name { font-weight: 700; font-size: 15px; }
+    .model-btn-desc { font-size: 12px; color: var(--text2); margin-top: 2px; }
+    .model-check {
+      font-size: 17px; color: var(--accent);
+      opacity: 0; transition: opacity var(--t);
+    }
+    .model-btn.active .model-check { opacity: 1; }
+
+    .sheet-sep { height:1px; background:var(--border); margin: 8px 0 14px; }
+    .clear-btn {
+      display: flex; align-items:center; justify-content:center; gap:8px;
+      width: 100%;
+      padding: 13px;
+      background: rgba(248,113,113,0.08);
+      border: 1.5px solid rgba(248,113,113,0.2);
+      border-radius: 14px;
+      color: var(--danger);
+      font-size: 14.5px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all var(--t);
+    }
+    .clear-btn:active { background: rgba(248,113,113,0.18); }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo">✦</div>
+      <div class="header-info">
+        <div class="header-title">AI Assistant</div>
+        <div class="header-status" id="statusEl">
+          <div class="status-dot"></div>
+          <span id="statusText">Готов к работе</span>
+        </div>
+      </div>
+    </div>
+    <div class="model-pill" id="modelPill">
+      <span class="pill-icon" id="pillIcon">🤖</span>
+      <span id="pillName">GPT-4o mini</span>
+      <span class="pill-chevron">▾</span>
+    </div>
+  </header>
+
+  <!-- Chat -->
+  <div class="chat" id="chat">
+    <div class="empty" id="emptyState">
+      <div class="empty-glow">✦</div>
+      <div class="empty-title">С чего начнём?</div>
+      <div class="empty-sub">Задайте вопрос или выберите подсказку ниже</div>
+      <div class="chips">
+        <button class="chip" onclick="suggest('Объясни квантовые вычисления простым языком')">
+          <span class="chip-icon">💡</span> Объясни квантовые вычисления
+        </button>
+        <button class="chip" onclick="suggest('Напиши функцию бинарного поиска на Python с объяснением')">
+          <span class="chip-icon">🐍</span> Бинарный поиск на Python
+        </button>
+        <button class="chip" onclick="suggest('Помоги составить профессиональный email для клиента')">
+          <span class="chip-icon">✍️</span> Профессиональный email
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="input-area">
+    <div class="input-row">
+      <textarea
+        id="inputBox"
+        class="textarea"
+        placeholder="Напишите сообщение..."
+        rows="1"
+      ></textarea>
+      <button class="send-btn" id="sendBtn" aria-label="Отправить">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Model sheet overlay -->
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-label">Выберите модель</div>
+    <div id="modelList"></div>
+    <div class="sheet-sep"></div>
+    <button class="clear-btn" id="clearBtn">🗑&nbsp; Очистить историю диалога</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ── Config ─────────────────────────────────────────────
+const API_URL = "https://curious-pudd.netlify.app/chat";
+
+const MODELS = {
+  gpt:      { name:"GPT-4o mini",  icon:"🤖", color:"#4F46E5", desc:"Быстрый и умный" },
+  claude:   { name:"Claude Haiku", icon:"🧠", color:"#7C3AED", desc:"Точный и творческий" },
+  deepseek: { name:"DeepSeek",     icon:"🐋", color:"#0E7490", desc:"Силён в коде" },
+  llama:    { name:"Llama 3 70B",  icon:"🦙", color:"#065F46", desc:"Открытый и мощный" },
+};
+
+// ── Telegram WebApp ─────────────────────────────────────
+const tg = window.Telegram?.WebApp ?? null;
+if (tg) { tg.expand(); tg.ready(); tg.enableClosingConfirmation(); }
+
+const haptic = (type, style = "light") => tg?.HapticFeedback?.[type]?.({ style });
+
+// ── State ───────────────────────────────────────────────
+let currentModel = "gpt";
+let memory = [];
+let loading = false;
+
+// ── DOM refs ────────────────────────────────────────────
+const chatEl   = document.getElementById("chat");
+const inputBox = document.getElementById("inputBox");
+const sendBtn  = document.getElementById("sendBtn");
+const overlay  = document.getElementById("overlay");
+const statusEl = document.getElementById("statusText");
+const pillName = document.getElementById("pillName");
+const pillIcon = document.getElementById("pillIcon");
+
+// ── Markdown renderer ───────────────────────────────────
+function esc(s) {
+  return String(s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function renderMd(raw) {
+  if (!raw) return "";
+
+  // Preserve code blocks
+  const codeBlocks = [];
+  let t = raw.replace(/```(\w*)?\n?([\s\S]*?)```/g, (_, lang, code) => {
+    codeBlocks.push(`<pre><code>${esc(code.trim())}</code></pre>`);
+    return `\x02B${codeBlocks.length - 1}\x02`;
+  });
+
+  // Preserve inline code
+  const inlines = [];
+  t = t.replace(/`([^`\n]+)`/g, (_, c) => {
+    inlines.push(`<code>${esc(c)}</code>`);
+    return `\x02I${inlines.length - 1}\x02`;
+  });
+
+  // Escape HTML
+  t = esc(t);
+
+  // Restore
+  t = t.replace(/\x02B(\d+)\x02/g, (_, i) => codeBlocks[i]);
+  t = t.replace(/\x02I(\d+)\x02/g, (_, i) => inlines[i]);
+
+  // Markdown
+  t = t
+    .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
+    .replace(/^[-•*] (.+)$/gm, "<li>$1</li>")
+    .replace(/(<li>[\s\S]*?<\/li>)/g, m => `<ul>${m}</ul>`)
+    .replace(/\n{2,}/g, "<br><br>")
+    .replace(/\n/g, "<br>");
+
+  return t;
+}
+
+// ── Time ────────────────────────────────────────────────
+const now = () => new Date().toLocaleTimeString("ru", { hour:"2-digit", minute:"2-digit" });
+
+// ── DOM helpers ─────────────────────────────────────────
+function clearEmpty() {
+  document.getElementById("emptyState")?.remove();
+}
+
+function scrollBottom(smooth = true) {
+  chatEl.scrollTo({ top: chatEl.scrollHeight, behavior: smooth ? "smooth" : "instant" });
+}
+
+function setStatus(text, color = "var(--success)") {
+  statusEl.textContent = text;
+  document.querySelector(".status-dot").style.background = color;
+}
+
+// ── User message ────────────────────────────────────────
+function appendUser(text) {
+  clearEmpty();
+  const g = document.createElement("div");
+  g.className = "msg-group user";
+  g.innerHTML = `
+    <div class="bubble user">${esc(text)}</div>
+    <div class="msg-meta">${now()}</div>`;
+  chatEl.appendChild(g);
+  scrollBottom();
+}
+
+// ── AI placeholder (thinking) ───────────────────────────
+function appendThinking() {
+  clearEmpty();
+  const m = MODELS[currentModel];
+  const g = document.createElement("div");
+  g.className = "msg-group ai";
+  g.innerHTML = `
+    <div class="bubble ai thinking" id="thinkBubble">
+      <span class="think-icon">⚙</span>
+      <span class="think-text">Думаю...</span>
+    </div>`;
+  chatEl.appendChild(g);
+  scrollBottom();
+  return g;
+}
+
+// ── Finalize AI message with typewriter ─────────────────
+async function finalizeAI(group, text) {
+  const m = MODELS[currentModel];
+  const bubble = group.querySelector(".bubble");
+  bubble.className = "bubble ai streaming";
+  bubble.innerHTML = `
+    <div class="ai-header">
+      <div class="ai-avatar" style="background:${m.color}22">${m.icon}</div>
+      <span class="ai-model-name">${m.name}</span>
+    </div>
+    <div class="content" id="streamContent"></div>`;
+
+  const contentEl = bubble.querySelector("#streamContent");
+
+  // Word-by-word typewriter
+  const words = text.split(/(\s+)/);
+  let built = "";
+  for (const w of words) {
+    built += w;
+    contentEl.innerHTML = renderMd(built) + '<span class="cursor"></span>';
+    scrollBottom(false);
+    await new Promise(r => setTimeout(r, 14));
+  }
+
+  // Final state
+  bubble.className = "bubble ai";
+  contentEl.innerHTML = renderMd(text);
+
+  // Actions
+  const actions = document.createElement("div");
+  actions.className = "msg-actions";
+  actions.innerHTML = `
+    <button class="act-btn js-copy">📋 Копировать</button>
+    <button class="act-btn js-regen">↺ Повторить</button>`;
+  bubble.appendChild(actions);
+
+  // Timestamp
+  const meta = document.createElement("div");
+  meta.className = "msg-meta";
+  meta.textContent = now();
+  group.appendChild(meta);
+
+  scrollBottom();
+  haptic("notification");
+}
+
+function errorAI(group, msg) {
+  const b = group.querySelector(".bubble");
+  b.className = "bubble ai";
+  b.innerHTML = `<span style="color:var(--danger)">⚠️ ${esc(msg)}</span>`;
+}
+
+// ── API call ────────────────────────────────────────────
+async function callAPI(text) {
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, model: currentModel, memory: memory.slice(-16) }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || `Ошибка сервера (${res.status})`);
+  }
+  return res.json();
+}
+
+// ── Send message ────────────────────────────────────────
+async function send(override) {
+  const text = (override ?? inputBox.value).trim();
+  if (!text || loading) return;
+
+  loading = true;
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = '<div class="spinner"></div>';
+  inputBox.value = "";
+  autoResize();
+  setStatus("Думаю...", "var(--accent2)");
+  haptic("impact", "light");
+
+  appendUser(text);
+  memory.push({ role: "user", content: text });
+
+  const group = appendThinking();
+
+  try {
+    const data = await callAPI(text);
+    if (!data.answer) throw new Error("Пустой ответ от сервера");
+
+    memory = data.memory ?? [...memory, { role: "assistant", content: data.answer }];
+    await finalizeAI(group, data.answer);
+    setStatus("Готов к работе");
+  } catch (e) {
+    console.error(e);
+    memory.pop();
+    errorAI(group, e.message);
+    setStatus("Ошибка", "var(--danger)");
+    setTimeout(() => setStatus("Готов к работе"), 3000);
+  } finally {
+    loading = false;
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+    inputBox.focus();
+  }
+}
+
+// ── Suggest chip ────────────────────────────────────────
+function suggest(text) { send(text); }
+
+// ── Delegated click handler ─────────────────────────────
+chatEl.addEventListener("click", async (e) => {
+  // Copy
+  const copyBtn = e.target.closest(".js-copy");
+  if (copyBtn) {
+    const content = copyBtn.closest(".bubble")?.querySelector(".content")?.innerText ?? "";
+    await navigator.clipboard.writeText(content);
+    copyBtn.textContent = "✅ Скопировано";
+    haptic("impact", "light");
+    setTimeout(() => { copyBtn.textContent = "📋 Копировать"; }, 1600);
+  }
+
+  // Regen
+  const regenBtn = e.target.closest(".js-regen");
+  if (regenBtn && !loading) {
+    const lastUser = [...memory].reverse().find(m => m.role === "user");
+    if (!lastUser) return;
+
+    // Remove last AI message from memory & DOM
+    const lastAiIdx = memory.map(m => m.role).lastIndexOf("assistant");
+    if (lastAiIdx !== -1) memory.splice(lastAiIdx, 1);
+
+    const groups = chatEl.querySelectorAll(".msg-group.ai");
+    groups[groups.length - 1]?.remove();
+
+    // Re-run
+    loading = true;
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<div class="spinner"></div>';
+    setStatus("Думаю...", "var(--accent2)");
+
+    const group = appendThinking();
+    try {
+      const data = await callAPI(lastUser.content);
+      if (!data.answer) throw new Error("Пустой ответ");
+      memory = data.memory ?? [...memory, { role:"assistant", content: data.answer }];
+      await finalizeAI(group, data.answer);
+      setStatus("Готов к работе");
+    } catch (err) {
+      errorAI(group, err.message);
+      setStatus("Ошибка", "var(--danger)");
+      setTimeout(() => setStatus("Готов к работе"), 3000);
+    } finally {
+      loading = false;
+      sendBtn.disabled = false;
+      sendBtn.innerHTML = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+    }
+  }
+});
+
+// ── Model sheet ─────────────────────────────────────────
+function openSheet() {
+  renderModels();
+  overlay.classList.add("open");
+  haptic("impact", "light");
+}
+
+function closeSheet() { overlay.classList.remove("open"); }
+
+function renderModels() {
+  document.getElementById("modelList").innerHTML = Object.entries(MODELS).map(([k, m]) => `
+    <button class="model-btn ${k === currentModel ? "active" : ""}" onclick="pickModel('${k}')">
+      <div class="model-emoji" style="background:${m.color}20">${m.icon}</div>
+      <div class="model-text">
+        <div class="model-btn-name">${m.name}</div>
+        <div class="model-btn-desc">${m.desc}</div>
+      </div>
+      <span class="model-check">✓</span>
+    </button>`).join("");
+}
+
+function pickModel(key) {
+  currentModel = key;
+  pillName.textContent = MODELS[key].name;
+  pillIcon.textContent  = MODELS[key].icon;
+  closeSheet();
+  haptic("impact", "medium");
+}
+
+document.getElementById("modelPill").onclick = openSheet;
+overlay.onclick = (e) => { if (e.target === overlay) closeSheet(); };
+
+document.getElementById("clearBtn").onclick = () => {
+  memory = [];
+  chatEl.innerHTML = `
+    <div class="empty" id="emptyState">
+      <div class="empty-glow">✦</div>
+      <div class="empty-title">История очищена</div>
+      <div class="empty-sub">Начните новый диалог</div>
+    </div>`;
+  closeSheet();
+  haptic("impact", "medium");
+};
+
+// ── Input ───────────────────────────────────────────────
+sendBtn.onclick = () => send();
+
+inputBox.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+function autoResize() {
+  inputBox.style.height = "auto";
+  inputBox.style.height = Math.min(inputBox.scrollHeight, 130) + "px";
+}
+inputBox.addEventListener("input", autoResize);
+
+// ── Viewport / keyboard fix ─────────────────────────────
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", () => scrollBottom(false));
+}
+</script>
+</body>
+</html>

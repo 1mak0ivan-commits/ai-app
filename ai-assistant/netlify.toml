@@ -1,0 +1,19 @@
+[build]
+  functions = "netlify/functions"
+  publish   = "."
+
+# Route /chat → serverless function
+[[redirects]]
+  from   = "/chat"
+  to     = "/.netlify/functions/chat"
+  status = 200
+
+# Route /health → same function
+[[redirects]]
+  from   = "/health"
+  to     = "/.netlify/functions/chat"
+  status = 200
+
+# Node version for functions
+[functions]
+  node_bundler = "esbuild"

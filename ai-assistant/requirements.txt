@@ -1,0 +1,5 @@
+# Python dependencies for bot.py
+# Netlify Functions use Node.js — this file is for the bot only.
+aiogram>=3.10.0
+openai>=1.30.0
+python-dotenv>=1.0.0

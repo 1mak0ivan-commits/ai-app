@@ -1,0 +1,22 @@
+# Environment variables — NEVER commit this
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Netlify
+.netlify/
+
+# Node
+node_modules/
